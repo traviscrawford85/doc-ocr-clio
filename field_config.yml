@@ -1,0 +1,24 @@
+
+fields:
+  Matter.Client.Name:
+    - "Patient Name"
+    - "Client Name"
+    - "Name"
+
+  Matter.Custom.DateOfLoss:
+    - "Date of Incident"
+    - "Date of Loss"
+    - "Accident Date"
+  Contact.Client.Phone:
+    - "Business Phone"
+    - "Phone Number"
+  Matter.Client.Address:
+    - "Home Address:"
+    - "Work Address:"
+    - "Busines Address:"
+  Matter.Client.HourlyWage:
+    - "Regular Pay:"
+    - "Hourly Rate:"
+  Matter.Client.HoursWorked:
+    - "Total Hours Worked"
+    - "Hours Worked"
