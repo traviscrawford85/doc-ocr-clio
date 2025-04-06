@@ -1,4 +1,5 @@
 import argparse
+import os
 import pdfplumber
 import pytesseract
 from pdf2image import convert_from_path
@@ -6,144 +7,126 @@ from PIL import Image
 import re
 import dateparser
 import spacy
-import yaml
 import json
-import os
-import itertools
 
-# Load spaCy NLP model once
 nlp = spacy.load("en_core_web_sm")
 
-def load_field_config(yaml_path="field_config.yml"):
-    with open(yaml_path, 'r') as f:
-        return yaml.safe_load(f)["fields"]
-
-def extract_fields(text, field_config):
+def extract_fields(text):
     data = {}
-    fallback = {}
-    earnings = {}
+    other = {}
 
-    # Deduplicate lines
-    lines = list(dict.fromkeys(line.strip() for line in text.splitlines() if line.strip()))
+    # Regex: Client/Patient Name
+    name_match = re.search(r"(Patient Name|Client Name|Name):\s*(.+)", text, re.IGNORECASE)
+    if name_match:
+        data["Matter.Client.Name"] = name_match.group(2).strip()
 
-    # Clio-specific mapping
-    for clio_field, label_variants in field_config.items():
-        for label in label_variants:
-            pattern = rf"{label}\s*[:\-]?\s*(.+)"
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                data[clio_field] = match.group(1).strip()
-                break
+    # Date of Loss
+    dol_match = re.search(r"(Date of (Incident|Loss)):\s*([\d/.-]+)", text, re.IGNORECASE)
+    if dol_match:
+        parsed_date = dateparser.parse(dol_match.group(3))
+        if parsed_date:
+            data["Matter.Custom.DateOfLoss"] = str(parsed_date.date())
 
-    # Fallback label:value matches
-    generic_matches = re.findall(r"([A-Z][A-Za-z0-9 .\-]{2,40})\s*[:\-]\s*(.+)", text)
-    for label, value in generic_matches:
-        fallback[label.strip()] = value.strip()
+    # Phone Number
+    phone_match = re.search(r"(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})", text)
+    if phone_match:
+        data["Contact.Client.Phone"] = phone_match.group(1)
 
-    # Fallback label on one line, value on next
-    for a, b in itertools.pairwise(lines):
-        if re.match(r"^[A-Z][A-Za-z0-9 .\-]{2,40}[:\-]?$", a) and b.strip():
-            if a.strip().rstrip(":") not in fallback:
-                fallback[a.strip().rstrip(":")] = b.strip()
+    # Hours Worked (paystub-style)
+    hours_match = re.search(r"Total Hours Worked.*?([\d]+\.\d+)", text, re.IGNORECASE)
+    if hours_match:
+        data["Matter.Client.HoursWorked"] = hours_match.group(1)
 
-    # Parse financial lines
-    for line in lines:
-        if re.match(r"^(Federal Income|Medicare|Social Security|Maryland State Income)", line):
-            parts = re.split(r"\s{2,}|\t", line)
-            if len(parts) >= 3:
-                label = parts[0].strip()
-                this_period = parts[1].strip()
-                ytd = parts[2].strip()
-                earnings[label] = {"This Period": this_period, "YTD": ytd}
+    # NLP Entities
+    doc = nlp(text)
+    for ent in doc.ents:
+        if ent.label_ == "ORG":
+            other.setdefault("Matter.Custom.Provider", ent.text)
 
-    return data, fallback, earnings
+    return data, other
 
-def save_output(fields, fallback, earnings, source_file):
-    base_name = os.path.splitext(os.path.basename(source_file))[0]
-    output_file = f"output/{base_name}_extracted.json"
+def save_extracted_data(output_path, file_name, fields, other_fields):
+    base = os.path.splitext(os.path.basename(file_name))[0]
+    output_file = os.path.join(output_path, f"{base}_extracted.json")
 
-    os.makedirs("output", exist_ok=True)
+    with open(output_file, 'w') as f:
+        json.dump({
+            "clio_fields": fields,
+            "other_fields": other_fields
+        }, f, indent=2)
 
-    full_data = {
-        "clio_fields": fields,
-        "unmapped_fields": fallback,
-        "financial_data": earnings
-    }
+    print(f"💾 Output saved to: {output_file}")
 
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(full_data, f, indent=2)
-
-    print(f"\n💾 Output saved to: {output_file}")
-
-def process_pdf_smart(pdf_path, field_config):
+def process_pdf_smart(pdf_path, output_path):
     with pdfplumber.open(pdf_path) as pdf:
         for i, page in enumerate(pdf.pages):
-            print(f"\n--- Page {i + 1} ---")
+            print(f"\n--- Page {i + 1}: {pdf_path} ---")
 
             text = page.extract_text()
             if text and len(text.strip()) > 30:
                 print("✅ Text-based PDF detected.")
+                fields, other = extract_fields(text)
             else:
                 print("📷 Scanned PDF detected – applying OCR...")
                 image = convert_from_path(pdf_path, first_page=i + 1, last_page=i + 1)[0]
                 text = pytesseract.image_to_string(image)
+                fields, other = extract_fields(text)
 
-            fields, fallback, earnings = extract_fields(text, field_config)
-
+            print("🧾 Extracted Fields for Clio:")
             if fields:
-                print("🧾 Extracted Fields for Clio:\n")
                 for k, v in fields.items():
                     print(f"✅ {k} → {v}")
             else:
                 print("⚠️ No Clio-compatible fields were found.")
 
-            if fallback:
+            if other:
                 print("\n📋 Other Fields Detected (Unmapped):")
-                for k, v in fallback.items():
+                for k, v in other.items():
                     print(f"- {k}: {v}")
 
-            if earnings:
-                print("\n💰 Financial Summary:")
-                for label, amounts in earnings.items():
-                    print(f"- {label}: This Period = {amounts['This Period']} | YTD = {amounts['YTD']}")
+            save_extracted_data(output_path, pdf_path, fields, other)
 
-            save_output(fields, fallback, earnings, pdf_path)
-
-def process_image(file_path, field_config):
+def process_image(file_path, output_path):
     text = pytesseract.image_to_string(Image.open(file_path))
-    fields, fallback, earnings = extract_fields(text, field_config)
+    fields, other = extract_fields(text)
 
-    if fields:
-        print("🧾 Extracted Fields for Clio:\n")
-        for k, v in fields.items():
-            print(f"✅ {k} → {v}")
-    else:
-        print("⚠️ No Clio-compatible fields were found.")
+    print("🧾 Extracted Fields for Clio:")
+    for k, v in fields.items():
+        print(f"✅ {k} → {v}")
 
-    if fallback:
+    if other:
         print("\n📋 Other Fields Detected (Unmapped):")
-        for k, v in fallback.items():
+        for k, v in other.items():
             print(f"- {k}: {v}")
 
-    if earnings:
-        print("\n💰 Financial Summary:")
-        for label, amounts in earnings.items():
-            print(f"- {label}: This Period = {amounts['This Period']} | YTD = {amounts['YTD']}")
+    save_extracted_data(output_path, file_path, fields, other)
 
-    save_output(fields, fallback, earnings, file_path)
+def batch_process_folder(folder_path, output_path):
+    for filename in os.listdir(folder_path):
+        full_path = os.path.join(folder_path, filename)
+        if filename.lower().endswith(".pdf"):
+            process_pdf_smart(full_path, output_path)
+        elif filename.lower().endswith((".png", ".jpg", ".jpeg")):
+            process_image(full_path, output_path)
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract Clio-ready fields and financial data from PDFs/images")
-    parser.add_argument("--file", required=True, help="Path to PDF or image file")
-    parser.add_argument("--config", default="field_config.yml", help="Path to YAML field config file")
+    parser = argparse.ArgumentParser(description="Extract Clio-ready fields from scanned PDFs or images")
+    parser.add_argument("--file", help="Path to a single PDF or image file")
+    parser.add_argument("--folder", help="Path to a folder of PDFs/images to batch process")
+    parser.add_argument("--output", default="output", help="Directory to save extracted .json files")
     args = parser.parse_args()
 
-    field_config = load_field_config(args.config)
+    os.makedirs(args.output, exist_ok=True)
 
-    if args.file.lower().endswith(".pdf"):
-        process_pdf_smart(args.file, field_config)
+    if args.folder:
+        batch_process_folder(args.folder, args.output)
+    elif args.file:
+        if args.file.lower().endswith(".pdf"):
+            process_pdf_smart(args.file, args.output)
+        else:
+            process_image(args.file, args.output)
     else:
-        process_image(args.file, field_config)
+        print("⚠️ Please provide either --file or --folder argument.")
 
 if __name__ == "__main__":
     main()
