@@ -23,6 +23,7 @@ def extract_fields(text, field_config):
     other_fields = {}
     lines = text.splitlines()
 
+    # 1. Dynamic YAML pattern matching (as before)
     for field_key, label_patterns in field_config.items():
         found = False
         for line in lines:
@@ -35,20 +36,39 @@ def extract_fields(text, field_config):
             if found:
                 break
 
-    # NLP Entities (optional fallback)
+    # 2. Regex pattern matching for harder fields
+    # --- Date of Birth ---
+    dob_match = re.search(r"\b(?:DOB|born)\s*[^\d]*([\w]+\s+\d{1,2},?\s+\d{4})", text, re.IGNORECASE)
+    if dob_match and "Matter.Client.DateOfBirth" not in clio_fields:
+        parsed_dob = dateparser.parse(dob_match.group(1))
+        if parsed_dob:
+            clio_fields["Matter.Client.DateOfBirth"] = str(parsed_dob.date())
+
+    # --- Phone Number ---
+    phone_match = re.search(r"(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})", text)
+    if phone_match and "Contact.Client.Phone" not in clio_fields:
+        clio_fields["Contact.Client.Phone"] = phone_match.group(1)
+
+    # --- Email ---
+    email_match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", text)
+    if email_match and "Matter.Client.Email" not in clio_fields:
+        clio_fields["Matter.Client.Email"] = email_match.group(0)
+
+    # --- Address (loose detection) ---
+    addr_match = re.search(r"\d{1,5}\s+[A-Za-z\s]+(?:Street|St|Ave|Road|Rd|Blvd|Ln|Drive|Dr)\b.*", text)
+    if addr_match and "Matter.Client.Address" not in clio_fields:
+        clio_fields["Matter.Client.Address"] = addr_match.group(0)
+
+    # 3. NLP Entities (optional fallback)
     doc = nlp(text)
     for ent in doc.ents:
         if ent.label_ == "ORG":
             other_fields.setdefault("Matter.Custom.Provider", ent.text)
-
-    # Date parsing from common labels
-    dol_match = re.search(r"(Date of (Incident|Loss)):\s*([\d/.-]+)", text, re.IGNORECASE)
-    if dol_match and "Matter.Custom.DateOfLoss" not in clio_fields:
-        parsed_date = dateparser.parse(dol_match.group(3))
-        if parsed_date:
-            clio_fields["Matter.Custom.DateOfLoss"] = str(parsed_date.date())
+        if ent.label_ == "PERSON" and "Matter.Client.Name" not in clio_fields:
+            clio_fields["Matter.Client.Name"] = ent.text
 
     return clio_fields, other_fields
+
 
 def create_field_report(clio_fields, field_config):
     expected = set(field_config.keys())
