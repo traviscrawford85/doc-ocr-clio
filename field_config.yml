@@ -5,10 +5,18 @@ fields:
     - "Client Name"
     - "Name"
 
-  Matter.Custom.DateOfLoss:
+  Matter.CustomField.DateOfLoss:
     - "Date of Incident"
     - "Date of Loss"
     - "Accident Date"
+  Insurance.AdjusterName.FullName:
+    - "Adjuster Name:"
+    - "Claims Adjuster:"
+
+  Matter.CustomField.ClaimNumber:
+    - "Claim Number:"
+    - "Claim No:"
+    - "Ref No:"
   Contact.Client.Phone:
     - "Business Phone"
     - "Phone Number"
@@ -22,3 +30,11 @@ fields:
   Matter.Client.HoursWorked:
     - "Total Hours Worked"
     - "Hours Worked"
+  Firm.Attorney:
+    - "Attorney:"
+    - "Signed by:"
+  Matter.OriginatingAttorney:
+    - "Attorney:"
+    - "Signed by:"
+  User.Initials:
+    = "Initials:"
