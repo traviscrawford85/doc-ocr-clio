@@ -1,3 +1,5 @@
+import warnings
+warnings.filterwarnings("ignore", message="CropBox missing.*")
 import argparse
 import os
 import yaml
