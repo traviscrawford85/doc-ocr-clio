@@ -6,3 +6,6 @@ output/
 *.jpg
 .env
 .venv
+output/
+images/
+extracted/
