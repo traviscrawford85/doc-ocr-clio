@@ -12,7 +12,6 @@ fields:
   Insurance.AdjusterName.FullName:
     - "Adjuster Name:"
     - "Claims Adjuster:"
-
   Matter.CustomField.ClaimNumber:
     - "Claim Number:"
     - "Claim No:"
@@ -21,20 +20,41 @@ fields:
     - "Business Phone"
     - "Phone Number"
   Matter.Client.Address:
-    - "Home Address:"
-    - "Work Address:"
-    - "Busines Address:"
+    - "Patient Address"
+  Matter.Client.PrimaryHomePhoneNumber:
+    - "Phone Number"
+    - "Communication"
+  Matter.Client.Email:
+    - "Communication"
+  Matter.Client.DateOfBirth:
+    - "Patient Demographics"
+    - "Date of Birth"
+    - "Birthday"
+    - "DOB"
+    - "born"
+  Matter.Client.Address:
+    - "Home Address"
+    - "Work Address"
+    - "Busines Address"
   Matter.Client.HourlyWage:
     - "Regular Pay:"
     - "Hourly Rate:"
   Matter.Client.HoursWorked:
     - "Total Hours Worked"
     - "Hours Worked"
+  Matter.Description:
+    - "Note"
+    - "Description"
+    - "Practice Area"
+  Date.Verbose:
+    - "Patient Health Summary, generated on"
+  Matter.Location:
+    - "Patient Address"
   Firm.Attorney:
     - "Attorney:"
     - "Signed by:"
   Matter.OriginatingAttorney:
-    - "Attorney:"
-    - "Signed by:"
+    - "Attorney"
+    - "Signed by"
   User.Initials:
-    = "Initials:"
+    - "Initials"
